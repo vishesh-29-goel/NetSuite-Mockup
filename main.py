@@ -318,78 +318,235 @@ def get_vendors(token: str = Depends(verify_token), q: Optional[str] = Query(Non
 
 
 # ---------------------------------------------------------------------------
-# GL Report — Saved Exports (real P3.26 CSV stored in repo)
+# Database helpers — Supabase/Postgres for GL data
 # ---------------------------------------------------------------------------
 
-import csv as _csv
 import os as _os
+import psycopg2 as _psycopg2
+import psycopg2.extras as _extras
 
-_GL_CSV_PATH = _os.path.join(_os.path.dirname(__file__), 'Computer_Software_Accrual_P3.26.csv')
 
-def _load_gl_rows():
-    rows = []
-    with open(_GL_CSV_PATH, newline='') as f:
-        reader = _csv.DictReader(f)
-        for row in reader:
-            rows.append({
-                'financial_row': row['Financial Row'],
-                'entity': row['Entity'],
-                'vendor': row['Vendor'],
-                'department': row['Department'],
-                'memo': row['Memo'],
-                'transaction_type': row['Transaction Type'],
-                'document_number': row['Document Number'],
-                'asset_memo': row['Asset Memo'],
-                'zip_bill_link': row['Zip Bill Link'],
-                'je_support_link': row['Journal Entry Support'],
-                'jan_2026': float(row['Jan 2026'] or 0),
-                'feb_2026': float(row['Feb 2026'] or 0),
-                'mar_2026': float(row['Mar 2026'] or 0),
-            })
-    return rows
+def _get_db():
+    """Return a psycopg2 connection using DATABASE_URL env var."""
+    url = _os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError("DATABASE_URL not set")
+    return _psycopg2.connect(url)
+
+
+def _db_rows_to_gl(rows):
+    """Convert DB rows (RealDictRow) to the GL report shape."""
+    result = []
+    for r in rows:
+        result.append({
+            "financial_row": r["account"],
+            "entity": r["entity"],
+            "vendor": r["vendor"],
+            "department": r["department"],
+            "memo": r["memo"],
+            "transaction_type": r["transaction_type"],
+            "document_number": r["document_number"],
+            "asset_memo": r["asset_memo"],
+            "zip_bill_link": r["zip_bill_link"],
+            "je_support_link": r["journal_entry_support"],
+            "jan_2026": float(r["jan_2026"] or 0),
+            "feb_2026": float(r["feb_2026"] or 0),
+            "mar_2026": float(r["mar_2026"] or 0),
+            "total": float(r["total"] or 0),
+        })
+    return result
+
 
 REPORT_META = {
-    "reportId": "gl-report-65100-mar2026",
-    "reportName": "TB Detail — Computer Software (65100) — Mar 2026",
+    "reportId": "gl-report-65100-q1-2026",
+    "reportName": "TB Detail — Computer Software (65100) — Q1 2026",
     "subsidiary": "Faire Wholesale, Inc.",
     "accounts": "65100 - Computer Software",
     "periods": "Jan 2026, Feb 2026, Mar 2026",
     "createdAt": "2026-04-01T09:14:32Z",
+    "source": "netsuite_gl_transactions",
 }
 
+
+# ---------------------------------------------------------------------------
+# Saved Exports — GL Report  (reads from Postgres)
+# ---------------------------------------------------------------------------
 
 @app.get("/saved-exports/gl-report")
 def get_gl_report(
     vendor: Optional[str] = Query(None),
     department: Optional[str] = Query(None),
     account: Optional[str] = Query(None),
+    period: Optional[str] = Query(None),
 ):
     """
-    Returns the TB Detail GL report as JSON, parsed from the stored CSV.
-    Optionally filter by vendor, department, or account.
+    Returns the TB Detail GL report as JSON, queried from the agent-managed DB.
+    Mimics a NetSuite Saved Export / SuiteQL response.
+    Filterable by vendor, department, account, or period (Jan-2026 / Feb-2026 / Mar-2026).
     No auth required — mimics NetSuite Saved Exports public link behaviour.
     """
-    results = _load_gl_rows()
-    if vendor:
-        results = [r for r in results if vendor.lower() in r["vendor"].lower()]
-    if department:
-        results = [r for r in results if department.lower() in r["department"].lower()]
-    if account:
-        results = [r for r in results if account in r["financial_row"]]
+    conn = _get_db()
+    try:
+        cur = conn.cursor(cursor_factory=_extras.RealDictCursor)
+        query = "SELECT * FROM netsuite_gl_transactions WHERE 1=1"
+        params = []
+        if vendor:
+            query += " AND LOWER(vendor) LIKE %s"
+            params.append(f"%{vendor.lower()}%")
+        if department:
+            query += " AND LOWER(department) LIKE %s"
+            params.append(f"%{department.lower()}%")
+        if account:
+            query += " AND LOWER(account) LIKE %s"
+            params.append(f"%{account.lower()}%")
+        if period:
+            col_map = {"jan": "jan_2026", "feb": "feb_2026", "mar": "mar_2026"}
+            for k, col in col_map.items():
+                if k in period.lower():
+                    query += f" AND {col} != 0"
+                    break
+        query += " ORDER BY ABS(total) DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    results = _db_rows_to_gl(rows)
     meta = dict(REPORT_META)
     meta["rowCount"] = len(results)
+    meta["filters"] = {"vendor": vendor, "department": department, "account": account, "period": period}
     return {"meta": meta, "totalRows": len(results), "rows": results}
 
 
 @app.get("/saved-exports/gl-report/csv")
-def download_gl_report_csv():
+def download_gl_report_csv(
+    vendor: Optional[str] = Query(None),
+    department: Optional[str] = Query(None),
+):
     """
-    Streams the raw CSV file as a download.
+    Streams the GL report as a CSV download, sourced from the DB.
     Used by the skill to ingest the report programmatically.
     """
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        _GL_CSV_PATH,
+    import io
+    import csv as _csv
+    from fastapi.responses import StreamingResponse
+
+    conn = _get_db()
+    try:
+        cur = conn.cursor(cursor_factory=_extras.RealDictCursor)
+        query = "SELECT * FROM netsuite_gl_transactions WHERE 1=1"
+        params = []
+        if vendor:
+            query += " AND LOWER(vendor) LIKE %s"
+            params.append(f"%{vendor.lower()}%")
+        if department:
+            query += " AND LOWER(department) LIKE %s"
+            params.append(f"%{department.lower()}%")
+        query += " ORDER BY ABS(total) DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    buf = io.StringIO()
+    fieldnames = ["account","entity","vendor","department","memo","transaction_type",
+                  "document_number","asset_memo","zip_bill_link","journal_entry_support",
+                  "jan_2026","feb_2026","mar_2026","total","period"]
+    writer = _csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for r in rows:
+        writer.writerow({k: r[k] for k in fieldnames if k in r})
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
         media_type="text/csv",
-        filename="Computer_Software_Accrual_P3.26.csv",
+        headers={"Content-Disposition": "attachment; filename=NetSuite_GL_65100_Q1_2026.csv"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Transaction Drill-Down — line items behind a vendor/account balance
+# ---------------------------------------------------------------------------
+
+@app.get("/record/v1/transaction-lines")
+def get_transaction_lines(
+    vendor: str = Query(..., description="Vendor name (partial match OK)"),
+    account: Optional[str] = Query(None, description="GL account filter e.g. '65100'"),
+    department: Optional[str] = Query(None, description="Department filter"),
+    period: Optional[str] = Query(None, description="Period filter e.g. 'Mar-2026'"),
+    document_number: Optional[str] = Query(None, description="Filter by specific doc number"),
+    token: str = Depends(verify_token),
+):
+    """
+    Returns individual transaction line items that make up a vendor's GL balance.
+    This is the drill-down endpoint — equivalent to NetSuite's transaction detail view.
+    The agent calls this after spotting a large/unusual balance in the GL report
+    to understand WHAT makes up the number (e.g. the $69K Experian Mar-2026 balance).
+    """
+    conn = _get_db()
+    try:
+        cur = conn.cursor(cursor_factory=_extras.RealDictCursor)
+        query = """
+            SELECT id, parent_document_number, vendor, account, department,
+                   line_date, description, invoice_number, quantity,
+                   unit_price, amount, period_month, transaction_type, memo
+            FROM netsuite_transaction_line_items
+            WHERE LOWER(vendor) LIKE %s
+        """
+        params = [f"%{vendor.lower()}%"]
+
+        if account:
+            query += " AND LOWER(account) LIKE %s"
+            params.append(f"%{account.lower()}%")
+        if department:
+            query += " AND LOWER(department) LIKE %s"
+            params.append(f"%{department.lower()}%")
+        if period:
+            query += " AND LOWER(period_month) LIKE %s"
+            params.append(f"%{period.lower()}%")
+        if document_number:
+            query += " AND (LOWER(parent_document_number) LIKE %s OR LOWER(invoice_number) LIKE %s)"
+            params.extend([f"%{document_number.lower()}%", f"%{document_number.lower()}%"])
+
+        query += " ORDER BY line_date, amount DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    items = []
+    total_amount = 0.0
+    for r in rows:
+        amt = float(r["amount"] or 0)
+        total_amount += amt
+        items.append({
+            "id": r["id"],
+            "documentNumber": r["parent_document_number"],
+            "invoiceNumber": r["invoice_number"],
+            "vendor": r["vendor"],
+            "account": r["account"],
+            "department": r["department"],
+            "date": str(r["line_date"]),
+            "description": r["description"],
+            "quantity": float(r["quantity"] or 1),
+            "unitPrice": float(r["unit_price"] or amt),
+            "amount": amt,
+            "periodMonth": r["period_month"],
+            "transactionType": r["transaction_type"],
+            "memo": r["memo"],
+        })
+
+    return {
+        "query": {
+            "vendor": vendor,
+            "account": account,
+            "department": department,
+            "period": period,
+            "documentNumber": document_number,
+        },
+        "totalRows": len(items),
+        "netAmount": round(total_amount, 2),
+        "currency": "USD",
+        "items": items,
+    }
