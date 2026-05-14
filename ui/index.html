@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NetSuite — Trial Balance Detail | Faire Wholesale, Inc.</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;background:#f0f2f5;color:#1a1a1a;overflow-x:hidden}
+
+/* Loading bar */
+#loading-bar{position:fixed;top:0;left:0;height:3px;background:#0066cc;width:0;z-index:9999;transition:width 0.6s ease;border-radius:0 2px 2px 0}
+
+/* Top nav */
+.top-nav{position:fixed;top:0;left:0;right:0;height:44px;background:#0f2a55;display:flex;align-items:center;padding:0 16px;z-index:500;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
+.top-nav-logo{color:white;font-size:13px;letter-spacing:0.3px;white-space:nowrap}
+.top-nav-logo span.oracle{font-weight:300;opacity:0.9}
+.top-nav-logo span.pipe{opacity:0.5;margin:0 6px}
+.top-nav-logo span.netsuite{font-weight:700}
+.top-nav-spacer{flex:1}
+.top-nav-right{display:flex;align-items:center;gap:16px}
+.top-nav-right .company{color:white;font-size:12px;opacity:0.9}
+.top-nav-right .icon{color:white;opacity:0.8;cursor:pointer;font-size:15px}
+.api-status{display:flex;align-items:center;gap:4px;font-size:10px;color:rgba(255,255,255,0.7)}
+.api-dot{width:6px;height:6px;background:#4caf50;border-radius:50%;display:inline-block}
+
+/* Secondary nav */
+.sec-nav{position:fixed;top:44px;left:0;right:0;height:32px;background:#1a3a6b;display:flex;align-items:center;padding:0 16px;z-index:499;font-size:12px;color:rgba(255,255,255,0.8)}
+.sec-nav a{color:rgba(255,255,255,0.7);text-decoration:none}
+.sec-nav a:hover{color:white}
+.sec-nav .sep{margin:0 6px;opacity:0.5}
+.back-link{color:#6baed6;text-decoration:none;font-size:12px;cursor:pointer;margin-right:12px}
+.back-link:hover{color:#9ecae1;text-decoration:underline}
+
+/* Layout */
+.layout{display:flex;margin-top:76px;min-height:calc(100vh - 76px)}
+.sidebar{width:140px;min-width:140px;background:#f0f2f5;border-right:1px solid #d0d7de;padding:12px 0;position:fixed;top:76px;bottom:0;overflow-y:auto}
+.sidebar-item{padding:7px 14px;font-size:12px;color:#666;cursor:default;white-space:nowrap}
+.sidebar-item:hover{background:#e4e6ea}
+.sidebar-section{padding:8px 14px 4px;font-size:10px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:0.5px}
+.main{margin-left:140px;flex:1;padding:20px 24px;min-height:calc(100vh - 76px)}
+
+/* Page header */
+.page-title{font-size:18px;font-weight:600;color:#1a1a1a;margin-bottom:4px}
+.page-subtitle{font-size:12px;color:#666;margin-bottom:16px}
+
+/* Filter bar */
+.filter-bar{background:#f8f9fa;border:1px solid #d0d7de;border-radius:4px;padding:10px 16px;display:flex;align-items:center;gap:20px;margin-bottom:20px;flex-wrap:wrap}
+.filter-item{font-size:12px;color:#555}
+.filter-item strong{color:#1a1a1a}
+.filter-btn{background:#0066cc;color:white;border:none;border-radius:3px;padding:5px 12px;font-size:12px;cursor:pointer;margin-left:auto}
+.filter-btn:hover{background:#0055aa}
+
+/* Tables */
+.table-wrap{border:1px solid #d0d7de;border-radius:4px;overflow:hidden;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{background:#e8ecf0;border-bottom:2px solid #d0d7de;padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:#4a5568;white-space:nowrap}
+thead th.num{text-align:right}
+tbody tr{border-bottom:1px solid #e8ecee}
+tbody tr:nth-child(even){background:#f8f9fa}
+tbody tr:hover{background:#e8f0fe !important;cursor:pointer}
+tbody td{padding:7px 12px;vertical-align:middle}
+tbody td.num{text-align:right;font-variant-numeric:tabular-nums}
+tfoot tr{background:#e8ecf0;border-top:2px solid #d0d7de}
+tfoot td{padding:8px 12px;font-weight:700;font-size:12px}
+tfoot td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* Amount colors */
+.amt-pos{color:#1a1a1a}
+.amt-neg{color:#c41e3a}
+.amt-zero{color:#666}
+
+/* Status badges */
+.badge{border-radius:3px;padding:2px 6px;font-size:11px;white-space:nowrap;font-weight:500}
+.badge-review{background:#fff3cd;color:#856404}
+.badge-flagged{background:#fde8e8;color:#c41e3a}
+.badge-ok{background:#e8f5e9;color:#2e7d32}
+
+/* Flagged row */
+.flagged-row{background:#fff3cd !important;border-left:4px solid #e67e00}
+.flagged-row:hover{background:#ffeaa0 !important}
+
+/* Section headers in detail views */
+.detail-header{margin-bottom:20px}
+.detail-title{font-size:20px;font-weight:600;color:#1a1a1a;margin-bottom:6px}
+.detail-subtitle{font-size:13px;color:#666;margin-bottom:10px}
+.detail-badge{display:inline-block;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600}
+.detail-badge-red{background:#fde8e8;color:#c41e3a}
+.detail-badge-orange{background:#fff3cd;color:#856404}
+
+/* Zip links */
+.zip-link{color:#0066cc;text-decoration:none;font-size:11px;border:1px solid #0066cc;border-radius:3px;padding:1px 5px}
+.zip-link:hover{background:#e8f0fe}
+
+/* Collapsible */
+.collapsible-header{background:#f0f2f5;border:1px solid #d0d7de;border-radius:4px;padding:8px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-top:20px;font-size:12px;font-weight:600;color:#4a5568}
+.collapsible-header:hover{background:#e4e6ea}
+.collapsible-content{border:1px solid #d0d7de;border-top:none;border-radius:0 0 4px 4px;padding:12px;display:none;background:white}
+.collapsible-content.open{display:block}
+.caret{transition:transform 0.2s}
+.caret.open{transform:rotate(180deg)}
+
+/* Note italic */
+.note-italic{font-size:11px;color:#666;font-style:italic;margin-top:8px;padding:8px 12px;background:#f8f9fa;border-radius:4px;border-left:3px solid #d0d7de}
+
+/* Tooltip */
+[data-tooltip]{position:relative;cursor:help}
+[data-tooltip]::after{content:attr(data-tooltip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#1a1a1a;color:white;font-size:11px;padding:4px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:999;margin-bottom:4px;max-width:300px;white-space:normal;text-align:center}
+[data-tooltip]:hover::after{opacity:1}
+
+/* Pace panel */
+#pace-panel{position:fixed;top:0;right:-400px;width:380px;height:100vh;background:white;z-index:1000;box-shadow:-4px 0 20px rgba(0,0,0,0.2);transition:right 0.3s ease;display:flex;flex-direction:column}
+#pace-panel.open{right:0}
+.pace-header{background:#0f2a55;color:white;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.pace-header h3{font-size:14px;font-weight:600}
+.pace-close{background:none;border:none;color:white;font-size:18px;cursor:pointer;opacity:0.8;line-height:1}
+.pace-close:hover{opacity:1}
+.pace-body{padding:16px;overflow-y:auto;flex:1;font-size:12px;line-height:1.6}
+.pace-section{margin-bottom:16px}
+.pace-section h4{font-size:12px;font-weight:700;color:#1a1a1a;margin-bottom:8px;border-bottom:1px solid #e8ecee;padding-bottom:4px}
+.pace-item{margin-bottom:6px;display:flex;gap:8px}
+.pace-item-icon{flex-shrink:0;margin-top:1px}
+.pace-code{background:#f8f9fa;border:1px solid #e8ecee;border-radius:4px;padding:10px 12px;font-size:11px;line-height:1.7;color:#1a1a1a;white-space:pre-wrap;margin-bottom:12px}
+.pace-btn{display:block;width:100%;border:none;border-radius:4px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px;text-align:center}
+.pace-btn:hover{opacity:0.9}
+.pace-btn-green{background:#2e7d32;color:white}
+.pace-btn-navy{background:#0f2a55;color:white}
+.pace-btn-red{background:#c41e3a;color:white}
+
+/* Floating pace button */
+#pace-float-btn{position:fixed;bottom:24px;right:24px;background:#0f2a55;color:white;border:none;border-radius:50px;padding:10px 18px;font-size:13px;cursor:pointer;z-index:900;box-shadow:0 4px 12px rgba(0,0,0,0.25);animation:pulse-glow 2.5s infinite}
+#pace-float-btn:hover{background:#1a3a6b}
+@keyframes pulse-glow{0%,100%{box-shadow:0 4px 12px rgba(0,0,0,0.25)}50%{box-shadow:0 4px 20px rgba(15,42,85,0.5),0 0 0 6px rgba(15,42,85,0.1)}}
+
+/* Loading overlay */
+#loading-overlay{display:none;position:fixed;top:76px;left:140px;right:0;bottom:0;background:rgba(255,255,255,0.8);z-index:400;align-items:center;justify-content:center;font-size:14px;color:#555}
+#loading-overlay.show{display:flex}
+
+/* Views */
+.view{display:none}
+.view.active{display:block}
+</style>
+</head>
+<body>
+
+<!-- Loading bar -->
+<div id="loading-bar"></div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">⏳ Loading transaction detail...</div>
+
+<!-- Top Nav -->
+<nav class="top-nav">
+  <div class="top-nav-logo">
+    <span class="oracle">ORACLE</span><span class="pipe">|</span><span class="netsuite">NetSuite</span>
+  </div>
+  <div class="top-nav-spacer"></div>
+  <div class="top-nav-right">
+    <div class="api-status"><span class="api-dot"></span>SuiteTalk REST v1</div>
+    <span class="company">Faire Wholesale, Inc.</span>
+    <span class="icon" title="User">👤</span>
+    <span class="icon" title="Settings">⚙</span>
+  </div>
+</nav>
+
+<!-- Secondary Nav -->
+<div class="sec-nav" id="sec-nav">
+  <span id="breadcrumb">
+    <a href="#">Reports</a><span class="sep">›</span>
+    <a href="#">Financial</a><span class="sep">›</span>
+    Trial Balance Detail
+  </span>
+</div>
+
+<!-- Layout -->
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">Navigation</div>
+    <div class="sidebar-item">Transactions</div>
+    <div class="sidebar-item">Reports</div>
+    <div class="sidebar-item">Lists</div>
+    <div class="sidebar-item">Setup</div>
+    <div class="sidebar-section" style="margin-top:12px">Reports</div>
+    <div class="sidebar-item" style="color:#0066cc;cursor:pointer">Financial</div>
+    <div class="sidebar-item">Accounts Payable</div>
+    <div class="sidebar-item">Payroll</div>
+    <div class="sidebar-item">Tax</div>
+    <div class="sidebar-section" style="margin-top:12px">Tools</div>
+    <div class="sidebar-item">Saved Searches</div>
+    <div class="sidebar-item">Exports</div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+
+    <!-- VIEW 1: Summary -->
+    <div class="view active" id="view-summary">
+      <div class="page-title">Trial Balance Detail — Computer Software</div>
+      <div class="page-subtitle">Faire Wholesale, Inc. &nbsp;|&nbsp; Account: 65100 &nbsp;|&nbsp; Period: March 2026 &nbsp;|&nbsp; Run: May 11, 2026</div>
+
+      <div class="filter-bar">
+        <div class="filter-item"><strong>Account:</strong> 65100</div>
+        <div class="filter-item"><strong>Period:</strong> Mar 2026</div>
+        <div class="filter-item"><strong>Subsidiary:</strong> Faire Wholesale, Inc.</div>
+        <button class="filter-btn" onclick="refreshAnimation()">↺ Refresh</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Vendor</th>
+              <th>Department</th>
+              <th class="num">Jan 2026</th>
+              <th class="num">Feb 2026</th>
+              <th class="num">Mar 2026</th>
+              <th class="num">MoM Variance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr onclick="rowClick('cdw1')"><td>CDW Direct</td><td>200 Corporate</td><td class="num amt-neg">($0.01)</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$11,223.66</td><td class="num amt-neg">($11,223.66)</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('cdw2')"><td>CDW Direct</td><td>235 Information Technology</td><td class="num amt-pos">$21,633.20</td><td class="num amt-pos">$11,223.66</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$11,223.66</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('cdw3')"><td>CDW Direct</td><td>430 Data Science</td><td class="num amt-pos">$8,469.47</td><td class="num amt-pos">$8,469.43</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$8,469.43</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('charm1')"><td>Charm</td><td>500 Growth - Brand Partners</td><td class="num amt-pos">$5,500.00</td><td class="num amt-pos">$5,500.00</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$5,500.00</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('charm2')"><td>Charm</td><td>570 GTM Operations</td><td class="num amt-pos">$575.34</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$5,500.00</td><td class="num amt-neg">($5,500.00)</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('exp1')"><td>Experian</td><td>300 Risk</td><td class="num amt-zero">$0.00</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$11,850.00</td><td class="num amt-neg">($11,850.00)</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr class="flagged-row" onclick="rowClick('experian')"><td>Experian</td><td>430 Data Science</td><td class="num amt-pos">$32,787.50</td><td class="num amt-pos">$29,193.62</td><td class="num amt-pos">$69,597.86</td><td class="num amt-neg">($40,404.24)</td><td><span class="badge badge-flagged">🔴 Flagged</span></td></tr>
+            <tr onclick="rowClick('middesk')"><td>Middesk, Inc.</td><td>300 Risk</td><td class="num amt-pos">$6,805.35</td><td class="num amt-pos">$4,564.61</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$4,564.61</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('navan')"><td>Navan</td><td>240 People Operations</td><td class="num amt-pos">$6,187.15</td><td class="num amt-pos">$4,726.01</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$4,726.01</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('onix1')"><td>Onix Networking Corp</td><td>200 Corporate</td><td class="num amt-pos">$28,273.18</td><td class="num amt-zero">$0.00</td><td class="num amt-zero">$0.00</td><td class="num amt-zero">$0.00</td><td><span class="badge badge-ok">✓ OK</span></td></tr>
+            <tr onclick="rowClick('onix2')"><td>Onix Networking Corp</td><td>235 Information Technology</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$28,721.65</td><td class="num amt-pos">$28,601.13</td><td class="num amt-pos">$120.52</td><td><span class="badge badge-ok">✓ OK</span></td></tr>
+            <tr onclick="rowClick('plaid')"><td>Plaid Inc.</td><td>400 Engineering</td><td class="num amt-pos">$51,950.45</td><td class="num amt-pos">$53,549.78</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$53,549.78</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+            <tr onclick="rowClick('smartly')"><td>Smartly.Io Solutns</td><td>520 Growth - Marketing</td><td class="num amt-pos">$42,943.70</td><td class="num amt-pos">$12,500.00</td><td class="num amt-zero">$0.00</td><td class="num amt-pos">$12,500.00</td><td><span class="badge badge-review">⚠ Review</span></td></tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2"><strong>Total</strong></td>
+              <td class="num"><strong>$209,334.71</strong></td>
+              <td class="num"><strong>$158,417.41</strong></td>
+              <td class="num"><strong>$132,496.44</strong></td>
+              <td class="num"><strong>$25,920.97</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 2: Experian / 430 Data Science -->
+    <div class="view" id="view-experian">
+      <div class="sec-nav-inline" style="margin-bottom:14px">
+        <a class="back-link" onclick="showView('summary')">← Back to Report</a>
+      </div>
+      <div class="detail-header">
+        <div class="detail-title">Experian — 430 Data Science</div>
+        <div class="detail-subtitle">Account: 65100 Computer Software &nbsp;|&nbsp; Period: March 2026 &nbsp;|&nbsp; Balance: $69,597.86</div>
+        <span class="detail-badge detail-badge-red">MoM Change: +$40,404.24</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Reference #</th>
+              <th>Date</th>
+              <th>Memo</th>
+              <th>Asset Memo</th>
+              <th class="num">Amount</th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Bill</td>
+              <td>6000244561</td>
+              <td>Mar 2026</td>
+              <td>BIS ONLINE-MAR-2026</td>
+              <td style="color:#999">—</td>
+              <td class="num amt-pos">$27,729.00</td>
+              <td><a class="zip-link" href="https://faire.ziphq.com/invoice-detail/0eddb76d-597a-8380-8760-0082abfdd8ea" target="_blank">View in Zip ↗</a></td>
+            </tr>
+            <tr>
+              <td>Bill</td>
+              <td>6000263190</td>
+              <td>Mar 2026</td>
+              <td>BIS ONLINE-MAR-2026</td>
+              <td style="color:#999">—</td>
+              <td class="num amt-pos">$34,431.36</td>
+              <td><a class="zip-link" href="https://faire.ziphq.com/invoice-detail/0f12828a-441a-8780-8760-0082ab4ea8f4" target="_blank">View in Zip ↗</a></td>
+            </tr>
+            <tr>
+              <td>Journal</td>
+              <td>JE2176667</td>
+              <td>Mar 2026</td>
+              <td style="color:#999">—</td>
+              <td><span data-tooltip="AS9719 | JE2173845 | Annual contract Aug 2025">AS9719 | Annual contract Aug 2025...</span></td>
+              <td class="num amt-pos">$7,437.50</td>
+              <td style="color:#999">—</td>
+            </tr>
+            <tr style="border-top:2px solid #d0d7de;background:#f0f2f5">
+              <td colspan="5" style="padding-top:6px;padding-bottom:6px;font-size:11px;color:#888">────────────────────────────────────────────────────────</td>
+              <td></td><td></td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="5"><strong>Total</strong></td>
+              <td class="num"><strong>$69,597.86</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Prior Period Comparison -->
+      <div class="collapsible-header" onclick="toggleCollapsible('prior-exp')">
+        Prior Period Comparison
+        <span class="caret" id="caret-prior-exp">▼</span>
+      </div>
+      <div class="collapsible-content" id="prior-exp">
+        <table style="font-size:12px;width:100%;border-collapse:collapse">
+          <thead>
+            <tr>
+              <th style="background:#e8ecf0;padding:7px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600;color:#4a5568;border-bottom:1px solid #d0d7de">Period</th>
+              <th style="background:#e8ecf0;padding:7px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600;color:#4a5568;border-bottom:1px solid #d0d7de">Balance</th>
+              <th style="background:#e8ecf0;padding:7px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.4px;font-weight:600;color:#4a5568;border-bottom:1px solid #d0d7de">Composition</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #e8ecee">
+              <td style="padding:7px 12px">Feb 2026</td>
+              <td style="padding:7px 12px;text-align:right">$29,193.62</td>
+              <td style="padding:7px 12px;color:#555">Bill $23,406.12 + Reclass $11,850.00 + Amortization $7,437.50 - Accrual reversal ($13,500.00)</td>
+            </tr>
+            <tr>
+              <td style="padding:7px 12px">Jan 2026</td>
+              <td style="padding:7px 12px;text-align:right">$32,787.50</td>
+              <td style="padding:7px 12px;color:#555">Bill $79,622.52 - Accrual reversal ($79,622.52) + Accrual $13,500.00 + Amortization $7,437.50 + Reclass $11,850.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- VIEW 3: Plaid Inc. / 400 Engineering -->
+    <div class="view" id="view-plaid">
+      <div class="sec-nav-inline" style="margin-bottom:14px">
+        <a class="back-link" onclick="showView('summary')">← Back to Report</a>
+      </div>
+      <div class="detail-header">
+        <div class="detail-title">Plaid Inc. — 400 Engineering</div>
+        <div class="detail-subtitle">Account: 65100 Computer Software &nbsp;|&nbsp; Period: March 2026 &nbsp;|&nbsp; Balance: $0.00</div>
+        <span class="detail-badge detail-badge-orange">MoM Change: -$53,549.78 (invoice pending)</span>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Reference #</th>
+              <th>Date</th>
+              <th>Memo</th>
+              <th>Asset Memo</th>
+              <th class="num">Amount</th>
+              <th>Links</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="color:#999">—</td>
+              <td style="color:#999">—</td>
+              <td>Mar 2026</td>
+              <td style="color:#888;font-style:italic">No transactions posted in March 2026</td>
+              <td style="color:#999">—</td>
+              <td class="num amt-zero">$0.00</td>
+              <td style="color:#999">—</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="5"><strong>Total</strong></td>
+              <td class="num"><strong>$0.00</strong></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="note-italic">February 2026 balance of $53,549.78 was invoice 6000218942 (Plaid API Usage). Invoice for March not yet received — may be post-AP-close.</div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Pace Analysis Panel -->
+<div id="pace-panel">
+  <div class="pace-header">
+    <h3>🤖 Pace Analysis</h3>
+    <button class="pace-close" onclick="togglePacePanel()">✕</button>
+  </div>
+  <div class="pace-body" id="pace-body">
+    <!-- Content injected by JS based on active view -->
+  </div>
+</div>
+
+<!-- Floating Pace Button -->
+<button id="pace-float-btn" onclick="togglePacePanel()">🤖 Pace Agent Active</button>
+
+<script>
+// State
+var currentView = 'summary';
+var pacePanelOpen = false;
+
+// Pace panel content per view
+var paceContent = {
+  summary: `
+    <div class="pace-section">
+      <h4>Summary Analysis — March 2026 Close</h4>
+      <p style="margin-bottom:10px;color:#555">Pace has analyzed 13 vendor-department combinations for March 2026 close.</p>
+      <div class="pace-item"><span class="pace-item-icon">✅</span><span>4 vendors: Invoice found in Gmail post-AP-close → new accrual</span></div>
+      <div class="pace-item"><span class="pace-item-icon">✅</span><span>1 vendor: Dept reclassification confirmed (Experian 300 Risk → 430 Data)</span></div>
+      <div class="pace-item"><span class="pace-item-icon">⚠️</span><span>1 vendor: Variance flagged — needs drill-down (Experian 430 Data Science)</span></div>
+      <div class="pace-item"><span class="pace-item-icon">ℹ️</span><span>7 vendors: Usage fluctuation or stable</span></div>
+    </div>
+    <div class="pace-section">
+      <h4>Actions Required</h4>
+      <div class="pace-item"><span class="pace-item-icon">🔴</span><span>Click the <strong>Experian / 430 Data Science</strong> row to review flagged variance</span></div>
+      <div class="pace-item"><span class="pace-item-icon">🟡</span><span>Click <strong>Plaid Inc.</strong> row to approve post-AP-close accrual</span></div>
+    </div>`,
+
+  experian: `
+    <div class="pace-section">
+      <div class="pace-code">📊 Experian / 430 Data Science
+March 2026 Balance: $69,597.86
+MoM Variance: +$40,404.24 vs February
+
+What makes up $69,597.86:
+• Bill #6000244561: $27,729.00
+  BIS ONLINE-MAR-2026 (standard monthly usage)
+• Bill #6000263190: $34,431.36
+  BIS ONLINE-MAR-2026 (usage overage — 47% higher than Feb's $23,406.12)
+• JE2176667: $7,437.50
+  Monthly amortization — annual contract (Invoice #6000157012, Aug 2025 start, DRI: Ting Neo)
+
+Why the +$40,404.24 variance:
+February included a $13,500 accrual reversal not present in March. Additionally, March BIS ONLINE billing ($62,160.36 combined) is significantly higher than February ($23,406.12) — suggesting elevated usage. The $7,437.50 amortization is consistent across all three periods.
+
+Pace Recommendation:
+⚠️ Flag for review — confirm with Experian DRI whether March usage was elevated. Check if prior accrual reversal posted correctly.
+
+Status: Pending human review</div>
+    </div>
+    <div class="pace-section">
+      <h4>Actions</h4>
+      <button class="pace-btn pace-btn-green" onclick="alert('✅ Approved as New Accrual. JE will be prepared.')">Approve as New Accrual</button>
+      <button class="pace-btn pace-btn-navy" onclick="alert('📧 Finance input request sent to controller@faire.com')">Request Finance Input</button>
+      <button class="pace-btn pace-btn-red" onclick="alert('🔴 Flagged for manual review. Added to review queue.')">Flag for Manual Review</button>
+    </div>`,
+
+  plaid: `
+    <div class="pace-section">
+      <div class="pace-code">📊 Plaid Inc. / 400 Engineering
+March 2026 Balance: $0.00
+MoM Variance: -$53,549.78
+
+Pace found: Invoice INV-WOR1941P19-2603 in Gmail
+Received: April 2, 2026 (post-AP-close)
+Amount: $56,643.77
+Period: March 2026
+Extracted via: Gemini Vision (OCR)
+
+Recommendation: Accrue $56,643.77 for March 2026
+(invoice received after AP close — standard new_accrual)
+
+Status: ✅ Auto-classified — pending approval</div>
+    </div>
+    <div class="pace-section">
+      <h4>Actions</h4>
+      <button class="pace-btn pace-btn-green" onclick="alert('✅ Accrual of $56,643.77 approved for March 2026. JE draft prepared.')">Approve Accrual</button>
+    </div>`
+};
+
+// Breadcrumbs per view
+var breadcrumbs = {
+  summary: '<a href="#">Reports</a><span class="sep">›</span><a href="#">Financial</a><span class="sep">›</span>Trial Balance Detail',
+  experian: '<a href="#" onclick="showView(\'summary\');return false">Reports</a><span class="sep">›</span><a href="#" onclick="showView(\'summary\');return false">Financial</a><span class="sep">›</span><a href="#" onclick="showView(\'summary\');return false">Trial Balance Detail</a><span class="sep">›</span>Experian / 430 Data Science',
+  plaid: '<a href="#" onclick="showView(\'summary\');return false">Reports</a><span class="sep">›</span><a href="#" onclick="showView(\'summary\');return false">Financial</a><span class="sep">›</span><a href="#" onclick="showView(\'summary\');return false">Trial Balance Detail</a><span class="sep">›</span>Plaid Inc. / 400 Engineering'
+};
+
+function showView(name) {
+  // Hide all views
+  var views = document.querySelectorAll('.view');
+  for (var i = 0; i < views.length; i++) {
+    views[i].classList.remove('active');
+  }
+  // Show target view
+  document.getElementById('view-' + name).classList.add('active');
+  currentView = name;
+
+  // Update breadcrumb
+  document.getElementById('breadcrumb').innerHTML = breadcrumbs[name] || breadcrumbs.summary;
+
+  // Update Pace panel content if open
+  updatePaceContent();
+
+  // Scroll to top
+  window.scrollTo(0, 0);
+}
+
+function togglePacePanel() {
+  var panel = document.getElementById('pace-panel');
+  pacePanelOpen = !pacePanelOpen;
+  if (pacePanelOpen) {
+    panel.classList.add('open');
+    updatePaceContent();
+  } else {
+    panel.classList.remove('open');
+  }
+}
+
+function updatePaceContent() {
+  if (pacePanelOpen) {
+    document.getElementById('pace-body').innerHTML = paceContent[currentView] || paceContent.summary;
+  }
+}
+
+function rowClick(rowId) {
+  if (rowId === 'experian') {
+    showWithLoading('experian');
+  } else if (rowId === 'plaid') {
+    showWithLoading('plaid');
+  } else {
+    // Placeholder flash
+    var overlay = document.getElementById('loading-overlay');
+    overlay.classList.add('show');
+    setTimeout(function() {
+      overlay.classList.remove('show');
+    }, 800);
+  }
+}
+
+function showWithLoading(viewName) {
+  var overlay = document.getElementById('loading-overlay');
+  overlay.classList.add('show');
+  setTimeout(function() {
+    overlay.classList.remove('show');
+    showView(viewName);
+    if (pacePanelOpen) {
+      updatePaceContent();
+    }
+  }, 800);
+}
+
+function toggleCollapsible(id) {
+  var content = document.getElementById(id);
+  var caret = document.getElementById('caret-' + id);
+  content.classList.toggle('open');
+  if (caret) caret.classList.toggle('open');
+}
+
+function refreshAnimation() {
+  var btn = document.querySelector('.filter-btn');
+  btn.textContent = '⏳ Refreshing...';
+  btn.disabled = true;
+  setTimeout(function() {
+    btn.textContent = '↺ Refresh';
+    btn.disabled = false;
+  }, 900);
+}
+
+// Page load animation
+window.addEventListener('load', function() {
+  var bar = document.getElementById('loading-bar');
+  bar.style.width = '0%';
+  setTimeout(function() { bar.style.width = '70%'; }, 50);
+  setTimeout(function() { bar.style.width = '100%'; }, 400);
+  setTimeout(function() { bar.style.opacity = '0'; }, 700);
+  setTimeout(function() { bar.style.display = 'none'; }, 1000);
+});
+</script>
+</body>
+</html>
